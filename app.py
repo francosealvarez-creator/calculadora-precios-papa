@@ -3,83 +3,154 @@ import re
 from PIL import Image, ImageDraw, ImageFont
 import io
 
-st.set_page_config(page_title="Generador de Lista", layout="centered")
+# --- CONFIGURACIÓN DE LA APP ---
+st.set_page_config(page_title="Generador Lista iPhone", layout="centered")
+st.title("🍏 Generador de Lista con Diseño")
+st.markdown("Pega las listas abajo, el sistema suma **+50 USD** a todo y genera el diseño.")
 
-st.title("🍏 Lista de Precios en Imagen")
-st.write("Pega la lista, calcula y descarga la imagen para WhatsApp.")
-
-# 1. Entrada de datos
-texto_entrada = st.text_area("Lista Original", height=150, placeholder="iPhone 13: 500\niPhone 14: 600...")
-
-# --- FUNCIÓN PARA CREAR IMAGEN ---
-def crear_imagen(texto_lista):
-    # Definir colores y tamaños
-    color_fondo = (255, 255, 255) # Blanco
-    color_texto = (0, 0, 0)       # Negro
-    ancho_imagen = 800
+# --- 1. FUNCIÓN MATEMÁTICA (SUMAR 50) ---
+def procesar_texto_sumar_50(texto_crudo):
+    if not texto_crudo:
+        return ""
     
-    # Intentar cargar una fuente bonita (si no hay, usa la default)
+    def sumar_precio(match):
+        # Toma el número encontrado, suma 50 y lo devuelve como texto
+        return str(int(match.group()) + 50)
+    
+    # Busca números de 3 o 4 cifras (ej: 450, 1200) para no sumar al "14" de iPhone 14
+    texto_procesado = re.sub(r'\b\d{3,4}\b', sumar_precio, texto_crudo)
+    return texto_procesado
+
+# --- 2. INTERFAZ PARA PEGAR TEXTO ---
+col1, col2 = st.columns(2)
+with col1:
+    st.subheader("Listado SELLADOS")
+    texto_sellados_input = st.text_area("Pega los sellados aquí:", height=300, key="sellados")
+with col2:
+    st.subheader("Listado TESTERS")
+    texto_testers_input = st.text_area("Pega los testers aquí:", height=300, key="testers")
+
+# --- 3. MOTOR GRÁFICO (DIBUJAR LA IMAGEN) ---
+def crear_imagen_diseno_pro(texto_sellados, texto_testers):
+    # A. Crear Lienzo (Tamaño Historia Instagram: 1080x1920)
+    W, H = 1080, 1920
+    img = Image.new('RGB', (W, H), color=(255, 255, 255))
+    draw = ImageDraw.Draw(img)
+
+    # B. Fondo Degradado (Azul a Rosa/Violeta)
+    for y in range(H):
+        r = int(65 + (190 * (y / H)))   # De azul oscuro a rosa brillante
+        g = int(105 - (50 * (y / H)))   # Ajuste de verde
+        b = 255                         # Mantener azul alto
+        draw.line([(0, y), (W, y)], fill=(r, g, b))
+
+    # C. Cargar Fuente (Tipografía)
     try:
-        # Si subes un archivo de fuente (ej: arial.ttf) al repo, pon su nombre aquí
-        font = ImageFont.truetype("arial.ttf", 40)
-        font_titulo = ImageFont.truetype("arial.ttf", 60)
-        padding_linea = 10
+        # Tamaños de letra
+        font_titulo = ImageFont.truetype("font.ttf", 100)
+        font_sub = ImageFont.truetype("font.ttf", 50)
+        font_banner = ImageFont.truetype("font.ttf", 45)
+        font_lista = ImageFont.truetype("font.ttf", 40)
     except:
-        # Fuente por defecto (es fea pero funciona si no subes un archivo .ttf)
-        font = ImageFont.load_default()
-        font_titulo = font
-        padding_linea = 4
+        # Si falla, usar la por defecto (fea pero funciona)
+        font_titulo = font_sub = font_banner = font_lista = ImageFont.load_default()
 
-    # Calcular la altura necesaria de la imagen según la cantidad de líneas
-    lineas = texto_lista.split('\n')
-    # Altura base (título) + (alto de línea * cantidad) + márgenes
-    alto_linea = font.getbbox("A")[3] + padding_linea 
-    alto_imagen = 150 + (len(lineas) * alto_linea)
+    # D. Cargar Imagen PNG (Esquina derecha)
+    try:
+        # --- CAMBIO AQUÍ: Ahora busca .png y lo convierte a RGB para evitar errores ---
+        top_img = Image.open("top_img.png").convert("RGB")
+        
+        # Redimensionar para que tenga 400px de alto proporcionalmente
+        baseheight = 400
+        hpercent = (baseheight / float(top_img.size[1]))
+        wsize = int((float(top_img.size[0]) * float(hpercent)))
+        top_img = top_img.resize((wsize, baseheight))
+        
+        # Pegar en la esquina derecha
+        img.paste(top_img, (W - wsize, 0))
+    except Exception as e:
+        print(f"No se pudo cargar la imagen PNG: {e}")
+        pass # Si falla, sigue sin la imagen
 
-    # Crear el lienzo
-    img = Image.new('RGB', (ancho_imagen, alto_imagen), color=color_fondo)
-    d = ImageDraw.Draw(img)
+    # E. Dibujar Títulos Principales
+    draw.text((50, 100), "IPHONE", font=font_titulo, fill=(255, 255, 255))
+    draw.text((50, 220), "LISTA DE PRECIOS ACTUALIZADA", font=font_sub, fill=(255, 255, 255))
 
-    # Dibujar Título
-    d.text((50, 30), "LISTA DE PRECIOS 📲", fill=(0, 102, 204), font=font_titulo)
-    
-    # Dibujar Línea separadora
-    d.line((50, 110, 750, 110), fill=(200, 200, 200), width=3)
+    # F. Dibujar las Cajas de Precios
+    cursor_y = 380 # Altura donde empieza el primer banner
+    margen_x = 50
+    ancho_util = W - (margen_x * 2)
+    padding_caja = 35
 
-    # Dibujar la lista
-    y_text = 130
-    for linea in lineas:
-        d.text((50, y_text), linea, fill=color_texto, font=font)
-        y_text += alto_linea
-    
+    # --- BLOQUE 1: SELLADOS (VERDE) ---
+    if texto_sellados:
+        # 1. Banner Verde
+        draw.rectangle([(margen_x, cursor_y), (margen_x + 620, cursor_y + 80)], fill=(106, 196, 168))
+        draw.text((margen_x + 25, cursor_y + 15), "■ IPHONES SELLADOS ■", font=font_banner, fill=(30, 30, 30))
+        cursor_y += 90 # Bajamos el cursor
+
+        # 2. Caja Blanca (Borde)
+        lineas = texto_sellados.strip().split('\n')
+        # Calcular altura dinámica de la caja
+        alto_caja = (len(lineas) * 55) + (padding_caja * 2)
+        
+        draw.rectangle([(margen_x, cursor_y), (margen_x + ancho_util, cursor_y + alto_caja)], outline=(255, 255, 255), width=5)
+        
+        # Escribir texto adentro
+        y_texto = cursor_y + padding_caja
+        for linea in lineas:
+            draw.text((margen_x + 40, y_texto), linea, font=font_lista, fill=(255, 255, 255))
+            y_texto += 55
+        
+        cursor_y += alto_caja + 60 # Espacio antes del siguiente bloque
+
+    # --- BLOQUE 2: TESTERS (AMARILLO) ---
+    if texto_testers:
+        # 1. Banner Amarillo
+        draw.rectangle([(margen_x, cursor_y), (margen_x + 620, cursor_y + 80)], fill=(227, 201, 57))
+        draw.text((margen_x + 25, cursor_y + 15), "■ IPHONE TESTERS ■", font=font_banner, fill=(30, 30, 30))
+        cursor_y += 90
+
+        # 2. Caja Blanca
+        lineas = texto_testers.strip().split('\n')
+        alto_caja = (len(lineas) * 55) + (padding_caja * 2)
+        
+        draw.rectangle([(margen_x, cursor_y), (margen_x + ancho_util, cursor_y + alto_caja)], outline=(255, 255, 255), width=5)
+        
+        y_texto = cursor_y + padding_caja
+        for linea in lineas:
+            draw.text((margen_x + 40, y_texto), linea, font=font_lista, fill=(255, 255, 255))
+            y_texto += 55
+
     return img
 
-# --- LÓGICA PRINCIPAL ---
-if st.button("Generar Imagen 🖼️", type="primary"):
-    if texto_entrada:
-        # A. Calcular Precios (+50)
-        def sumar_precio(match):
-            return str(int(match.group()) + 50)
-        
-        texto_procesado = re.sub(r'\b\d{3,4}\b', sumar_precio, texto_entrada)
-
-        # B. Generar la imagen
-        imagen_final = crear_imagen(texto_procesado)
-        
-        # C. Mostrar la imagen en pantalla
-        st.image(imagen_final, caption="Vista previa")
-
-        # D. Convertir imagen a bytes para poder descargarla
-        buf = io.BytesIO()
-        imagen_final.save(buf, format="PNG")
-        byte_im = buf.getvalue()
-
-        # E. Botón de Descarga
-        st.download_button(
-            label="Descargar Imagen para WhatsApp 📥",
-            data=byte_im,
-            file_name="lista_precios.png",
-            mime="image/png"
-        )
+# --- 4. BOTÓN DE ACCIÓN ---
+st.divider()
+if st.button("GENERAR IMAGEN FINAL 🖼️", type="primary", use_container_width=True):
+    if not texto_sellados_input and not texto_testers_input:
+        st.warning("⚠️ Pega al menos una lista para empezar.")
     else:
-        st.warning("Primero pega la lista arriba.")
+        with st.spinner("Calculando precios y dibujando..."):
+            # Calcular precios
+            sellados_calc = procesar_texto_sumar_50(texto_sellados_input)
+            testers_calc = procesar_texto_sumar_50(texto_testers_input)
+
+            # Generar imagen
+            imagen_final = crear_imagen_diseno_pro(sellados_calc, testers_calc)
+
+            # Mostrar en pantalla (reducida para vista previa)
+            st.success("¡Imagen generada! Revisa la vista previa y descárgala abajo.")
+            st.image(imagen_final, caption="Vista Previa", use_container_width=True)
+
+            # Botón Descargar (Calidad total)
+            buf = io.BytesIO()
+            imagen_final.save(buf, format="PNG")
+            byte_im = buf.getvalue()
+
+            st.download_button(
+                label="DESCARGAR IMAGEN PARA WHATSAPP 📥",
+                data=byte_im,
+                file_name="lista_iphone_diseno.png",
+                mime="image/png",
+                use_container_width=True
+            )
